@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestionnaire de Tâches</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #121212; color: #fff; max-width: 600px; margin: 40px auto; padding: 20px; }
+        h1 { text-align: center; color: #4F46E5; }
+        .form { display: flex; gap: 10px; margin-bottom: 20px; }
+        input { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid #333; background: #1E1E1E; color: #fff; }
+        button { padding: 10px 16px; border-radius: 6px; border: none; background: #4F46E5; color: #fff; cursor: pointer; font-weight: bold; }
+        ul { list-style: none; padding: 0; }
+        li { background: #1E1E1E; padding: 12px; margin-bottom: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
+        .completed { text-decoration: line-through; color: #888; }
+        .actions { display: flex; gap: 8px; }
+        .btn-del { background: #EF4444; padding: 6px 10px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <h1>📝 To-Do List</h1>
+
+    <div class="form">
+        <input type="text" id="taskInput" placeholder="Nouvelle tâche...">
+        <button onclick="addTask()">Ajouter</button>
+    </div>
+
+    <ul id="taskList"></ul>
+
+    <script>
+        const API_URL = "http://localhost:8000/tasks/";
+
+        async function fetchTasks() {
+            const res = await fetch(API_URL);
+            const tasks = await res.json();
+            const list = document.getElementById("taskList");
+            list.innerHTML = "";
+            tasks.forEach(task => {
+                const li = document.createElement("li");
+                li.innerHTML = `
+                    <span class="${task.completed ? 'completed' : ''}">${task.title}</span>
+                    <div class="actions">
+                        <button onclick="toggleTask(${task.id}, ${!task.completed})">${task.completed ? 'Annuler' : 'Fait'}</button>
+                        <button class="btn-del" onclick="deleteTask(${task.id})">Supprimer</button>
+                    </div>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        async function addTask() {
+            const input = document.getElementById("taskInput");
+            if (!input.value.trim()) return;
+            await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: input.value })
+            });
+            input.value = "";
+            fetchTasks();
+        }
+
+        async function toggleTask(id, completed) {
+            await fetch(API_URL + id, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ completed: completed })
+            });
+            fetchTasks();
+        }
+
+        async function deleteTask(id) {
+            await fetch(API_URL + id, { method: "DELETE" });
+            fetchTasks();
+        }
+
+        fetchTasks();
+    </script>
+</body>
+</html>

@@ -2,17 +2,17 @@ import os
 import time
 from typing import Optional
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-# Récupération des variables d'environnement pour la base de données
 DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://user:password@db:5432/tododb"
 )
 
-# Connexion à PostgreSQL
 engine = None
 for _ in range(10):
     try:
@@ -28,7 +28,6 @@ if not engine:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Modèle SQLAlchemy
 class TaskModel(Base):
     __tablename__ = "tasks"
 
@@ -38,7 +37,6 @@ class TaskModel(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# Modèles Pydantic (Validation DTO)
 class TaskCreate(BaseModel):
     title: str
 
@@ -56,7 +54,16 @@ class TaskResponse(BaseModel):
 
 app = FastAPI(title="To-Do API avec FastAPI & PostgreSQL")
 
-# 1. READ ALL
+# Servir le fichier index.html à la racine /
+@app.get("/", response_class=HTMLResponse)
+def read_index():
+    if os.path.exists("index.html"):
+        with open("index.html", "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>Frontend non trouvé</h1>"
+
+# --- ROUTES API ---
+
 @app.get("/tasks/", response_model=list[TaskResponse])
 def get_tasks():
     db: Session = SessionLocal()
@@ -65,7 +72,6 @@ def get_tasks():
     finally:
         db.close()
 
-# 2. CREATE
 @app.post("/tasks/", response_model=TaskResponse)
 def create_task(task: TaskCreate):
     db: Session = SessionLocal()
@@ -78,7 +84,6 @@ def create_task(task: TaskCreate):
     finally:
         db.close()
 
-# 3. UPDATE (Mettre à jour le statut ou le titre)
 @app.put("/tasks/{task_id}", response_model=TaskResponse)
 def update_task(task_id: int, task_update: TaskUpdate):
     db: Session = SessionLocal()
@@ -98,7 +103,6 @@ def update_task(task_id: int, task_update: TaskUpdate):
     finally:
         db.close()
 
-# 4. DELETE (Supprimer une tâche)
 @app.delete("/tasks/{task_id}")
 def delete_task(task_id: int):
     db: Session = SessionLocal()
@@ -109,6 +113,6 @@ def delete_task(task_id: int):
 
         db.delete(db_task)
         db.commit()
-        return {"message": f"Tâche {task_id} supprimée avec succès"}
+        return {"message": f"Tâche {task_id} supprimée"}
     finally:
         db.close()
