@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Boolean
@@ -11,7 +12,7 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://user:password@db:5432/tododb"
 )
 
-# Attendre que la base de données soit disponible avant d'initialiser SQLAlchemy
+# Connexion à PostgreSQL
 engine = None
 for _ in range(10):
     try:
@@ -27,7 +28,7 @@ if not engine:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Modèle de la table dans la base de données
+# Modèle SQLAlchemy
 class TaskModel(Base):
     __tablename__ = "tasks"
 
@@ -37,9 +38,13 @@ class TaskModel(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# Modèle Pydantic pour la validation des données entrantes (JSON)
+# Modèles Pydantic (Validation DTO)
 class TaskCreate(BaseModel):
     title: str
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    completed: Optional[bool] = None
 
 class TaskResponse(BaseModel):
     id: int
@@ -51,10 +56,16 @@ class TaskResponse(BaseModel):
 
 app = FastAPI(title="To-Do API avec FastAPI & PostgreSQL")
 
-@app.get("/")
-def read_root():
-    return {"message": "Bienvenue sur l'API To-Do ! Accédez à /docs pour la documentation interactive."}
+# 1. READ ALL
+@app.get("/tasks/", response_model=list[TaskResponse])
+def get_tasks():
+    db: Session = SessionLocal()
+    try:
+        return db.query(TaskModel).all()
+    finally:
+        db.close()
 
+# 2. CREATE
 @app.post("/tasks/", response_model=TaskResponse)
 def create_task(task: TaskCreate):
     db: Session = SessionLocal()
@@ -67,11 +78,37 @@ def create_task(task: TaskCreate):
     finally:
         db.close()
 
-@app.get("/tasks/", response_model=list[TaskResponse])
-def get_tasks():
+# 3. UPDATE (Mettre à jour le statut ou le titre)
+@app.put("/tasks/{task_id}", response_model=TaskResponse)
+def update_task(task_id: int, task_update: TaskUpdate):
     db: Session = SessionLocal()
     try:
-        tasks = db.query(TaskModel).all()
-        return tasks
+        db_task = db.query(TaskModel).filter(TaskModel.id == task_id).first()
+        if not db_task:
+            raise HTTPException(status_code=404, detail="Tâche introuvable")
+
+        if task_update.title is not None:
+            db_task.title = task_update.title
+        if task_update.completed is not None:
+            db_task.completed = task_update.completed
+
+        db.commit()
+        db.refresh(db_task)
+        return db_task
+    finally:
+        db.close()
+
+# 4. DELETE (Supprimer une tâche)
+@app.delete("/tasks/{task_id}")
+def delete_task(task_id: int):
+    db: Session = SessionLocal()
+    try:
+        db_task = db.query(TaskModel).filter(TaskModel.id == task_id).first()
+        if not db_task:
+            raise HTTPException(status_code=404, detail="Tâche introuvable")
+
+        db.delete(db_task)
+        db.commit()
+        return {"message": f"Tâche {task_id} supprimée avec succès"}
     finally:
         db.close()
